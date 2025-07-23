@@ -23,7 +23,8 @@ profile.cov
 # Go workspace file
 go.work
 go.work.sum
-
+agent
+client
 # env file
 .env
 

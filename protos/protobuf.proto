@@ -1,0 +1,79 @@
+
+syntax = "proto3";
+
+option go_package = "github.com/stewyb314/remote-control/protos";
+package cmd;
+service Agent{
+    // Start a new command
+    rpc Start(StartRequest) returns (StartResponse);
+    // Stream the output of a command
+    rpc Output(OutputRequest) returns (stream OutputResponse);
+    // Get the status of a command
+    rpc Status(StatusRequest) returns (StatusResponse);
+    // Stop a running command
+    rpc Stop(StopRequest) returns (StopResponse);
+}
+
+message StartRequest {
+    // command to execute
+    string command = 1;
+    // arguments to the command
+    repeated string args = 2; //
+}
+
+message StartResponse {
+    // return the command ID of started command
+    string id = 1;
+}
+
+message OutputRequest {
+    // ID of the command to retrieve the output of
+    string id = 1;
+}
+
+message OutputResponse {
+    // output of the command
+    bytes output = 1;
+}
+
+message StatusRequest {
+    // id of the command to status
+    string id = 1;
+}
+
+message StatusResponse {
+    // command ID
+    string id = 1;
+    // command which was executed
+    string cmd = 2;
+    // args to the command
+    repeated string args = 3;
+    // current state of the command
+    State state = 4;
+    // exit status of the command
+    int32 exit = 6;
+}
+message StopRequest {
+    // ID of the command to stop
+    string id = 1;
+}
+
+message StopResponse {
+    // ID of the command stopped
+    string id = 1;
+}
+
+enum State {
+    // Default the state is unknown
+    UNKNOWN = 0;
+    // The command ran to completion
+    COMPLETE = 1;
+    // The command was stopped prematurely by Stop()
+    STOPPED = 2;
+    // There was an error starting the command
+    ERROR = 3;
+    // The command is running
+    RUNNING = 4;
+    // The command has not started yet
+    PENDING = 5;
+}

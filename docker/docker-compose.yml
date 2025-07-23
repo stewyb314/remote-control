@@ -1,0 +1,39 @@
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    image: agent:latest
+    container_name: rc-agent
+    ports:
+      - "50051:50051"
+    environment:
+      DB_USER: rc-user
+      DB_PASSWORD: rc-password
+      DB_HOST: database
+      DB_DATABASE: executions
+      DB_PORT: 3306
+    links:
+      - "mariadb:database"
+  mariadb:
+    image: mariadb:latest
+    container_name: rc-mariadb-server
+    restart: always 
+    ports:
+      - "3306:3306" 
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: executions 
+      MYSQL_USER: rc-user
+      MYSQL_PASSWORD: rc-password
+      MARIADB_MYSQL_LOCALHOST_USER: "true"
+    volumes:
+      - ./data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
