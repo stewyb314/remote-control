@@ -2,7 +2,6 @@ package db
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/stewyb314/remote-control/internal/config"
 	"gorm.io/driver/mysql"
@@ -15,10 +14,7 @@ type MySQL struct {
 }
 
 func NewMySQL(conf config.DbConfig) (*MySQL, error) {
-	// jdbc:mariadb://testuser:testpass@192.168.1.100:3306/my_database?characterEncoding=utf8&serverTimezone=UTC
 	connectionString := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", conf.User, conf.Password, conf.Host, conf.Port, conf.Database)
-	//connectionString := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=Local", conf.User, conf.Password, conf.Host, conf.Port, conf.Database)
-	log.Print(connectionString)
 	databaseConnection, err := gorm.Open(mysql.Open(connectionString), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
@@ -46,6 +42,11 @@ func (m MySQL) CreateExecution(execution Execution) error {
 
 	return nil
 }	
+
+func (m MySQL) UpdateExecution(exec Execution) error {
+	tx := m.db.Save(&exec)
+	return tx.Error
+}
 
 func (m MySQL) Migrate() error {
 	err := m.db.AutoMigrate(

@@ -40,6 +40,10 @@ func main() {
 	switch params.SubCmd {
 	case "start":
 		doStart(conn, params)
+	case "status":
+		doStatus(conn, params)
+	case "stop":
+		doStop(conn, params)
 	default:
 		printSubCommandsHelp()
 		fmt.Printf("Valid parameters for all subcommands")	
@@ -47,10 +51,38 @@ func main() {
 	}
 }
 
+func doStatus(conn Connection, params Parameters) {
+	fmt.Printf("command: %+v\n", params.Cmd)
+	cmd := pb.StatusRequest{
+		Id: params.Cmd[0],
+	}
+	resp, err := conn.Client.Status(conn.Ctx, &cmd)
+	if err != nil {
+		fmt.Printf("Executing start command failed: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Job ID: %s\n\t%+v", resp.Id, resp)
+}
+func doStop(conn Connection, params Parameters) {
+	fmt.Printf("command: %+v\n", params.Cmd)
+	cmd := pb.StopRequest{
+		Id: params.Cmd[0],
+	}
+	resp, err := conn.Client.Stop(conn.Ctx, &cmd)
+	if err != nil {
+		fmt.Printf("Executing start command failed: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Job ID: %+v", resp)
+}
+
 func doStart(conn Connection, params Parameters) {
 	fmt.Printf("command: %+v\n", params.Cmd)
 	cmd := pb.StartRequest{
 		Command: params.Cmd[0],
+		Args: params.Cmd[1:],
 	}
 
 	resp, err := conn.Client.Start(conn.Ctx, &cmd)

@@ -16,6 +16,8 @@ services:
       DB_HOST: database
       DB_DATABASE: executions
       DB_PORT: 3306
+    volumes:
+      - ./jobs:/remote-control/jobs
     links:
       - "mariadb:database"
   mariadb:
@@ -33,7 +35,7 @@ services:
     volumes:
       - ./data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 30s
+      test: ["CMD-SHELL", "mariadb-admin --user=$${MYSQL_USER} --password=$${MYSQL_PASSWORD} --host=localhost ping"]
+      interval: 5s
       timeout: 10s
       retries: 5

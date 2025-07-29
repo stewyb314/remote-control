@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/stewyb314/remote-control/internal/db"
+	"github.com/stewyb314/remote-control/internal/services"
 	pb "github.com/stewyb314/remote-control/protos"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -14,20 +15,22 @@ import (
 
 type Agent struct {
 	pb.UnimplementedAgentServer
-	log *logrus.Logger
+	log *logrus.Entry
 	addr string
 	port int
 	tlsCredentials credentials.TransportCredentials
+	jobs *services.Jobs
 	db db.DB
 }
 
-func New(log *logrus.Logger, addr string, port int, tlsCredentials credentials.TransportCredentials, db db.DB) *Agent {
+func New(log *logrus.Entry, addr string, port int, tlsCredentials credentials.TransportCredentials, db db.DB, jobs *services.Jobs) *Agent {
 	return &Agent{
 		log: log,
 		addr: addr,
 		port: port,
 		tlsCredentials: tlsCredentials,	
 		db: db,
+		jobs: jobs,
 	}
 }
 func (a *Agent) StartAgent()  error {
@@ -46,5 +49,33 @@ func (a *Agent) StartAgent()  error {
 
 func (a *Agent) Start(ctx context.Context, in *pb.StartRequest) (*pb.StartResponse, error) {
 	a.log.Infof("Received Start request: %+v", in)
-	return &pb.StartResponse{Id: "0x12345"}, nil
+	id, err := a.jobs.NewJob(in.Command, in.Args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new job: %v", err)
+	}
+	return &pb.StartResponse{Id: id}, nil
+}
+func (a *Agent) Status(ctx context.Context, in *pb.StatusRequest) (*pb.StatusResponse, error) {
+	a.log.Infof("Received Status request for job ID: %s", in.Id)
+	exec, err := a.db.GetExecution(in.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get execution for job ID %s: %v", in.Id, err)
+	}
+	if exec == nil {
+		return nil, fmt.Errorf("no execution found for job ID %s", in.Id)
+	}
+	return &pb.StatusResponse{
+		Id: in.Id,
+		Exit: exec.ExitCode,
+		State: pb.State(exec.Status),
+	}, nil
+}
+
+func (a *Agent) Stop(ctx context.Context, in *pb.StopRequest) (*pb.StopResponse, error) {
+	a.log.Infof("Received Stop request for job ID: %s", in.Id)
+	err := a.jobs.StopJob(in.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stop job with ID %s: %v", in.Id, err)
+	}
+	return &pb.StopResponse{Id: in.Id}, nil
 }

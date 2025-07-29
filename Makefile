@@ -1,4 +1,4 @@
-.PHONY: protos clean client agent
+.PHONY: protos clean client agent 
 protos:
 	protoc --go_out=. --go_opt=paths=source_relative \
 	--go-grpc_out=. --go-grpc_opt=paths=source_relative \
@@ -9,8 +9,10 @@ agent:
 client:
 	go build -o client ./cmd/client
 
-agent-up:
-	rm -rf data && docker-compose -f docker/docker-compose.yml up -d --build
+clean-db:
+	rm -rf docker/data && rm -rf docker/jobs
+agent-up: clean-db
+	docker-compose -f docker/docker-compose.yml up -d --build
 agent-down:
 	docker-compose -f docker/docker-compose.yml down
 agent-shell:
