@@ -45,6 +45,7 @@ func NewJobs(db db.DB, log *logrus.Entry) *Jobs {
 	return j
 }	
 
+// monitorJobs listens for job completion signals and updates the database accordingly.
 func (j *Jobs) monitorJobs() {
 	go func() {
 		for done := range j.doneChan {
@@ -122,6 +123,9 @@ func (j *Jobs) StopJob(id string) error {
 	return nil
 }
 
+// startJob starts the job in a goroutine and handles its output.
+// It writes the output to an io.Writer (in this case, a file).
+// 
 func (j *Jobs) startJob(ctx context.Context, cmd string, args[]string, output *bufio.Writer, id string) {
 	
 	j.log.Infof("Starting job %s with args %v", cmd, args)

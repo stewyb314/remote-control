@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"time"
 
 	pb "github.com/stewyb314/remote-control/protos"
@@ -44,6 +45,9 @@ func main() {
 		doStatus(conn, params)
 	case "stop":
 		doStop(conn, params)
+	case "output":
+		doOutput(conn, params)
+
 	default:
 		printSubCommandsHelp()
 		fmt.Printf("Valid parameters for all subcommands")	
@@ -51,8 +55,41 @@ func main() {
 	}
 }
 
+func doOutput(conn Connection, params Parameters) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+
+	cmd := pb.OutputRequest{
+		Id: params.Cmd[0],
+	}
+	resp, err := conn.Client.Output(conn.Ctx, &cmd)
+	if err != nil {
+		fmt.Printf("Executing start command failed: %s\n", err)
+		os.Exit(1)
+	}
+
+	for {
+		select {
+		case <-sigChan:
+			fmt.Println("Received interrupt signal, exiting...")
+			return
+		default:
+			line, err := resp.Recv()
+			if err != nil {
+				if err.Error() == "EOF" {
+					return
+				} else {
+					fmt.Printf("Error receiving output: %s\n", err)
+					return
+				}	
+			}
+			fmt.Printf("%s\n", line.Output)
+
+		}
+	}
+}
+
 func doStatus(conn Connection, params Parameters) {
-	fmt.Printf("command: %+v\n", params.Cmd)
 	cmd := pb.StatusRequest{
 		Id: params.Cmd[0],
 	}
@@ -62,10 +99,9 @@ func doStatus(conn Connection, params Parameters) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Job ID: %s\n\t%+v", resp.Id, resp)
+	fmt.Printf("Job ID: %s\nStatus: %s\n", resp.Id, resp.State)
 }
 func doStop(conn Connection, params Parameters) {
-	fmt.Printf("command: %+v\n", params.Cmd)
 	cmd := pb.StopRequest{
 		Id: params.Cmd[0],
 	}
@@ -75,11 +111,10 @@ func doStop(conn Connection, params Parameters) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Job ID: %+v", resp)
+	fmt.Printf("Job ID: %s stopped\n", resp.Id)
 }
 
 func doStart(conn Connection, params Parameters) {
-	fmt.Printf("command: %+v\n", params.Cmd)
 	cmd := pb.StartRequest{
 		Command: params.Cmd[0],
 		Args: params.Cmd[1:],
@@ -91,7 +126,7 @@ func doStart(conn Connection, params Parameters) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("%v\n", resp)
+	fmt.Printf("ID: %s\n", resp)
 }
 
 func (c *Connection) Done() {
@@ -108,12 +143,6 @@ func argParse() Parameters {
 	flag.Parse()
 	args := flag.Args()
 
-	/*
-	if *ident == "" {
-		fmt.Println("missing ident config")
-		//os.Exit(1)
-	}
-		*/
 
 	params := Parameters{
 		Port:  *port,
@@ -121,7 +150,6 @@ func argParse() Parameters {
 		Ident: *ident,
 		Help:  *help,
 	}
-	fmt.Printf("params: %+v\n", params)
 
 	if len(args) == 0 {
 		printSubCommandsHelp()
@@ -168,48 +196,10 @@ func NewConnection(params Parameters) (Connection, error) {
 	connect := Connection{}
 	var err error
 
-	// Setup TLS
-	// read ca's cert
-	/*
-	caCert, err := ioutil.ReadFile(
-		"/Users/stoo/playgound/golang/teleport/certs/ca/ca-cert.pem")
-	if err != nil {
-		return connect, err
-	}
-
-	// create cert pool and append ca's cert
-	certPool := x509.NewCertPool()
-	if ok := certPool.AppendCertsFromPEM(caCert); !ok {
-		return connect, fmt.Errorf("error appending ca cert: %v", certPool)
-	}
-
-	//read client cert
-	clientCert, err := tls.LoadX509KeyPair(
-		"/Users/stoo/playgound/golang/teleport/certs/user1/user1-cert.pem",
-		"/Users/stoo/playgound/golang/teleport/certs/user1/user1-key.pem")
-
-	if err != nil {
-		return connect, err
-	}
-		*/
-
-	// set config of tls credential
-	/*
-	config := &tls.Config{
-		Certificates: []tls.Certificate{},
-		RootCAs:      nil,
-		MinVersion: tls.VersionTLS13,
-	}
-		*/
-
-	//tlsCredential := credentials.NewTLS(config)
-	//var tlsCredential credentials.TransportCredentials
-
 	url := fmt.Sprintf("%s:%d", params.Host, params.Port)
 
 	connect.conn, err = grpc.Dial(
 		url,
-		//grpc.WithTransportCredentials(tlsCredential),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 

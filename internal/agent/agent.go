@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stewyb314/remote-control/internal/db"
@@ -78,4 +80,30 @@ func (a *Agent) Stop(ctx context.Context, in *pb.StopRequest) (*pb.StopResponse,
 		return nil, fmt.Errorf("failed to stop job with ID %s: %v", in.Id, err)
 	}
 	return &pb.StopResponse{Id: in.Id}, nil
+}
+
+func (a *Agent) Output(in *pb.OutputRequest, serv pb.Agent_OutputServer) error {
+	a.log.Infof("Received Output request for job ID: %s", in.Id)
+	exec, err := a.db.GetExecution(in.Id)
+	if err != nil {
+		return  fmt.Errorf("failed to get execution for job ID %s: %v", in.Id, err)
+	}
+	if exec == nil {
+		return  fmt.Errorf("no execution found for job ID %s", in.Id)
+	}
+	file, err := os.Open(exec.Output)
+	if err != nil {
+		return  fmt.Errorf("failed to open output file for job ID %s: %v", in.Id, err)
+	}
+
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		serv.Send(&pb.OutputResponse{
+			Output: line,
+		})
+	}
+	return nil
 }
