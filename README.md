@@ -9,17 +9,13 @@ The remote control (rc) provides a means to execute remote commands on a Linux s
 rc will allow support techs to log into customer's Linux servers and execute shell commands to troubleshoot customer issues.
 
 # <a name="_n02bd3awbvj8"></a>Details
-rc is split into two executables: rc-agent and rc-client. rc-client runs in support's environment and sends arbitrary shell commands to rc-agent, which is installed on the customers' Linux box. rc-agent is responsible for executing the received commands and stores the results. The agent and client communicate over gRPC and authenticates over mTLS
-
-Resources used by commands run by the agent are restricted using Linux Control Groups v2 (cgroups). However, the commands are run as root with no whitelisting of allowable commands. 
-
-NOTE: A production version of this tool would typically include allow/deny lists or commands run in a chroot environment to prevent potentially harmful commands from being run. 
+rc is split into two executables: agent and client. client runs in support's environment and sends arbitrary shell commands to agent, which is installed on the customers' Linux box. agent is responsible for executing the received commands and stores the results. The agent and client communicate over gRPC.
 
 
-# <a name="_isobl31grue1"></a>trc-client usage
+# <a name="_isobl31grue1"></a>client usage
 rc-client consists of the sub commands start, stop status and output. All the commands except output return JSON. output streams the output of a command.
 
-If the comand sent to the agent fails for some reason, the `rc-client` will exit with the same error code as was returned from the agent.
+If the comand sent to the agent fails for some reason, the `client` will exit with the same error code as was returned from the agent.
 
 The following options are common to all subcommands:
 
@@ -35,47 +31,12 @@ The following options are common to all subcommands:
   -port int
     	remote port to connect to (default 50051)
 
-  -ca-cert string
-	path to the host's self signed CA certificate
-
-  -key string
-	path to the hosts key file
-
-  -host-cert
-	path to the host cert signed by the ca-cert
-
 ```
-
-
-### <a name="_6ybw908vo9un"></a>Subcommand error output
-On error, all subcommands output the following error format:
-
-```json
-{
-     "error": "error message",
-     "code": "numerical error code"
-}
-```
-Sample error messages:
-
-Unable to connect to agent:
-```json
-     "error": "Connection Refused",
-     "code": 1
-```
-
-User doesn't have permission to access the requested command:
-```json
-     "error": "Permission Denied",
-     "code": 403
-```
-
-
 
 ### <a name="_ibnjqdwwhvf0"></a>start subcommand
 start starts a new shell command on the remote server.
 
-`Usage: trc-client start [options] <command> [command arguments].`
+`Usage: client start [options] -- <command> [command arguments].`
 
 Output:
 ```json
@@ -98,11 +59,6 @@ Output:
 ```json
 {
      "id": "<command UUID>",
-     "command": "<command run>",
-     "args": [ 
-            "command arg1",
-            "command arg2"
-     ],
      "status": "[running,completed,stopped,error]",
      "error": "null|error message",
      "exit_status": "command exit status"
@@ -123,7 +79,7 @@ Where status is one of the following:
 ### <a name="_vmj8dmfecyrn"></a>output subcommand
 The output subcommand returns output of a command. If the command is still running on the remote machine, the output will be live streamed until the command finishes or is stopped by another trc command. If the command is not running, it will exit after all lines have been displayed. Both stdout AND stderr are included in the output.
 
-`Usage: trc-client [options] output <command id>`
+`Usage: client [options] output <command id>`
 
 Stream the output of a command
 
@@ -136,12 +92,10 @@ command output line3
 ```
 ### <a name="_xwvk9ga52s"></a>stop subcommand
 The stop command stops a running command. If the command is not running, or stopping the command fails, an error is returned.
-`Usage: rc-client [options] stop <command id>`
+`Usage: client [options] stop <command id>`
 Output:
-```json
-{
-     "success": "true"
-}
+```
+
 ```
 
 # <a name="_lzxdkro76353"></a>trc-agent usage
@@ -249,155 +203,5 @@ enum State {
 
 
 ```
-
-
-# <a name="_lmohbtf2asqg"></a>Authentication and Authorization
-Authentication will be handled using mutual TLS (mTLS).  Both the agent and the client will generate self signed certs using a common CA. When the connection is established, the client and agent will each verify the other’s authenticity.   Each client user will generate their own cert. The agent can retrieve the cert from gRPC connection and, since each cert is unique to a single user, the agent can distinguish which user executes which commands.  
-
-Authorization will ensure that a client user (as determined by the cert attached to the request) can only get the stop, get the status and stream the output of commands started by that user.  In other words, if user 1 starts a command, user 2 can’t stop, status or get the output of that command. Internally this will be accomplished by pairing the command execution with the public certificate attached to the request.
-# <a neame="_auth_service"></a>Auth Service
-
-The auth service provides the authorization outlined above.  When a Start() request is made, the auth service stores the certificate presented in the request and the command ID of the command to be executed.  On subsequent Status(), Output() or Stop() requests, the auth service will look up the command ID from the request and compare the stored certificate with the certificate from the request.
-
-# <a name="_tr2es7dqywgj"></a>mTLS
-Mutual TLS uses a dual exchange of certificates to verify the authenticity of both the host making the gRPC call and the host receiving the request.
-
-This  requires three files on each the agent and the client:
-
-1) The CA certificate file (shared between agent and client)
-1) The host’s self signed certificate file, which is unique to the agent and each client user 
-1) The host’s private key, which is also unique to the agent and each client user
-
-gRPC uses the CA certificate file to generate a certificate pool. The self signed certificate and the private key are used to generate the certificate which will be presented in the authentication.
-
-
-TLS version 1.3 will be required for this project.  This version of the [ TLS package](https://go.dev/src/crypto/tls/cipher_suites.go) only allows cipher suites with no known vulnerabilities. These are the encryption algorithms that this project will use.
-
-
-# <a name="_1y2ukim9xwfx"></a>Job Service
-
-The job service is a library responsible for managing jobs. The job service provides the interface to start, stop, status and get output of jobs.
-As each job is started, it sets up the cgroup by creating the directory and setting up the appropriate files. It then manages the lifecycle of the job, both notifying the job if the client stops the job and receiving notification as jobs complete. As the job changes state, the job service updates the job repository.
-
-The lifecycle of a job:
-
-1. The cgroup mounts, directories and files are setup
-1. The command is executed using exec.cmd Go library. The process is started in a goroutine then blocks waiting for Cmd.Wait() to return. When the command is started, the pid is added to cgroup.procs file and the Cmd object is saved in the JobService. The command is called through a wrapper script which ensures that the PID of the process is added to the procs file before execution begins (see cgroups section below for details)
-1. JobService updates that job's state in the repo to running
-1. If the process is stopped prematurely via a call to Stop() the JobService kills the command.
-1. On process completion, the job's state is updated in the repo
-1. The setup done for cgroups is cleaned up.
-
-As each job is executed, the output is written to a cfile.  For the purposes of this project, STDOUT and STDERR are both written to the same file and are interleaved.  A more robust system would separate the outputs and allow callers to specify which should be returned.
-
-## <a name="job_service_interface">Job Service Interface
-```go
-// Start a new command.  Once started, the JobService will run the command concurrently, writing the output to a file
-type JobService interface {
-// returns the command ID on success
-      Start(ctx context.Context, commandID string, command string, args []string) (string, error)
-
-     // Stop a running job.  This function will call the Cmd.Stop() function on corresponding command.
-     //Returns nil error on success or error 
-     Stop(ctx context.Context, commandID string) error
-
-     // Query a command.  On success a QueryResponse struct is returned
-     Query(ctx context.Context, commandID string) (*QueryResponse, error)
-
-     // Returns a struct to read command output from the output file (See <a name="#command_output">Command Output</a> for more details
-     GetOutput(ctx context.Context, string commandId) (*CommandOutput, error)
-}
-
-type QueryResponse struct {
-	Id string        //command ID
-	State string     // state of the command: running, canceled, error or completed
-	Command string   // the command which was run
-	Args []string    // arguments to the command
-}
-```
-
-
-## <a name="command_output"></a>Command Output
-The commandOutput struct is responsible for streaming the contents of the command files, which contain the output of commands run by the job service. The commandOutput is returned by the `GetOutput` method in the JobService and consists of:
-```go
-type commandOutput struct {
-	Id string           //command ID
-	File string         // path to the command output file
-     Out chan byte       // channel the file's content is written to
-	Ctx context.Context // Cancel context
-}
-
-func (c *commandOutput) ReadData() error
-
-```
-
-When the JobServie returns the commandOutput, it adds the cancel function associated with commandOutput.Ctx.  
-Once the command finishes executing, the JobSerivce calls the cancel function.  
-
-The ReadData() function then:
-1. Reads data from the output file writing the contents to the Out channel until EOF is reached
-1. Sets a ticker for a short period of time
-1. Do a select on the ticker channel and the ctx.Done channel
-1. If the Done channel fires first, read any other data that may have come into the output file and exit
-1. If the ticker fires first, check the output file for more data to be read
-1. select on the ticker and ctx.Done channels 
-1. repeat until the Done channel fires
-
-
-
-# <a name="_dp6btk223uz"></a>Jobs Repository
-The job repository preserves the state of each job. For this project, the jobs repository will be stored in memory.
-
-The schema is:
-
-```
-     command_id        | user cert    |     state    |   command     |    args       |    output_file.  | exit        | error
-   --------------------+--------------+--------------+---------------+---------------+------------------+-------------+------
-   UUID of the command | cert of user | state of the |command which | list of args  | file with command| command exit| error starting
-   which was run.      | who started  |  command     |was run.      | to the command| output.          | status code | command
-                         commnd
-```
-# <a name="cgroups"></a>Cgroups
-Cgroups provide a mechanism for limiting a process' resources.  For this project, only memory, CPU and disk IO will be considered and will use cgroups V2.
-
-The hardcoded limits per command for the project will be: max memory 1GB, max CPU 10% and max block IO 1 MB/s.
-
-Since all of the processes will use the same limits, the mounts in `/cgroups` will be setup when the agent starts and removed on exit.
-
-For simplicity the limits will be hardcoded into this project, but will be applied to each command individually.  Cgroups require the PID of the command be added to a file before the resource restrictions can be applied.  This creates a race condition between the time the command started (which generates the PID) and the PID is added to the file.  For this time, the command runs unrestricted.
- 
-Fortunetly all child PIDs of process are subject to the same resource restrictions as the parent PID.  This project takes advantage of this by using a smaller wrapper script to ensure the command is properly placed in the cgroup prior to execution:
-
-`wrapper.sh <pid_file> <command> <args>`
-
-Where:
-
-	`pid_file`:     path to the cgroup pid file
- 
-	`command`:      The command to execute
- 
-	`args`:         the arguments to the command
-
-The contents of wrapper.sh:
-
-```bash
-	path=$1
-	shift
-	echo $$ > ${path}
-	$* >2&1
-```
-
-For example if the command to be executed was: `ls -a /foo` the JobService would run the command:
-
-`wrapper.sh "/fs/cgroups/123/pid" "ls" "-a" "/foo"` 
-
-The wrapper script also redirects STDERR to STDOUT.  Since this project does not differentiate between stdout and stderr, doing this makes it easier for the JobService to save the command output to a file
-
-
-
-
-
-
-
 
 
