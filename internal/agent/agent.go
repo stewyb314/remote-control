@@ -3,6 +3,7 @@ package agent
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -66,10 +67,24 @@ func (a *Agent) Status(ctx context.Context, in *pb.StatusRequest) (*pb.StatusRes
 	if exec == nil {
 		return nil, fmt.Errorf("no execution found for job ID %s", in.Id)
 	}
+	var argsB []byte
+	err  = exec.Args.UnmarshalJSON(argsB)
+	if err != nil {
+		a.log.Error("failed to unmarshal args for job ID %s: %v", in.Id, err.Error())
+	}
+	var args []string
+	err = json.Unmarshal(argsB, &args)
+	if err != nil {
+		a.log.Errorf("failed to unmarshal args for job ID %s: %v", in.Id, err)
+	}
+
+
 	return &pb.StatusResponse{
 		Id: in.Id,
+		Cmd: exec.Command,
 		Exit: exec.ExitCode,
 		State: pb.State(exec.Status),
+		Args: args,
 	}, nil
 }
 

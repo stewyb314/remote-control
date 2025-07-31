@@ -32,7 +32,6 @@ type Connection struct {
 func main() {
     // Define flags
 	params := argParse()
-	fmt.Printf("args: %v\n", params.SubCmd)
 	conn, err := NewConnection(params)
 	if err != nil {
 		fmt.Println(err)
@@ -99,7 +98,7 @@ func doStatus(conn Connection, params Parameters) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Job ID: %s\nStatus: %s\n", resp.Id, resp.State)
+	fmt.Printf("Job ID: %s\nCommand: %s\n Args: %v\n Status: %s\n Exit code: %d\n", resp.Id, resp.Cmd, resp.State, resp.Args, resp.Exit)
 }
 func doStop(conn Connection, params Parameters) {
 	cmd := pb.StopRequest{
